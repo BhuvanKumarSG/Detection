@@ -1,0 +1,10 @@
+# Ignore local archive files
+"archive (1).zip"
+"archive (1)/"
+
+# Byte-compiled / virtualenv
+__pycache__/
+.venv/
+
+# model checkpoints
+*.ckpt

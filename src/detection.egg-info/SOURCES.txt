@@ -1,0 +1,12 @@
+README.md
+pyproject.toml
+setup.cfg
+src/detection/__init__.py
+src/detection/cli.py
+src/detection/features.py
+src/detection/model.py
+src/detection.egg-info/PKG-INFO
+src/detection.egg-info/SOURCES.txt
+src/detection.egg-info/dependency_links.txt
+src/detection.egg-info/top_level.txt
+tests/test_features.py
