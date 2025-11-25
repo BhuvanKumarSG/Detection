@@ -167,31 +167,57 @@ def train_compare(dataset_dir, out_model_base, out_model_bio, test_size=0.2, ran
     except Exception:
         pass
 
+    # Compute EER for each model (preferred ASVspoof metric)
+    def compute_eer(y_true, scores):
+        try:
+            from sklearn.metrics import roc_curve
+            fpr, tpr, thr = roc_curve(y_true, scores)
+            fnr = 1 - tpr
+            eer_idx = np.nanargmin(np.abs(fnr - fpr))
+            eer = (fpr[eer_idx] + fnr[eer_idx]) / 2.0
+            return eer
+        except Exception:
+            return None
+
+    eer_base = compute_eer(y_test, yb_proba)
+    eer_bio = compute_eer(y_test, ybio_proba)
+
     print(f"Aggregate: accuracy base={acc_base:.4f}, bio={acc_bio:.4f}")
     if auc_base is not None and auc_bio is not None:
         print(f"Aggregate: AUC base={auc_base:.4f}, bio={auc_bio:.4f}")
+    if eer_base is not None and eer_bio is not None:
+        print(f"Aggregate: EER base={eer_base:.4f}, bio={eer_bio:.4f}")
 
-    # Decide winner: higher accuracy, tie-breaker higher AUC, else tie
-    winner = None
-    if acc_base > acc_bio:
-        winner = 'baseline'
-    elif acc_bio > acc_base:
-        winner = 'bio'
+    # Decide winner: give equal weight to EER (converted to a higher-is-better score), AUC and accuracy.
+    # For each available metric, normalize so that higher is better and average them equally.
+    def make_score(eer, auc, acc):
+        vals = []
+        if eer is not None:
+            # EER is lower-is-better in [0,1]; convert to score where 1.0 is best
+            vals.append(max(0.0, 1.0 - float(eer)))
+        if auc is not None:
+            vals.append(float(auc))
+        if acc is not None:
+            vals.append(float(acc))
+        if not vals:
+            return None
+        return sum(vals) / len(vals)
+
+    score_base = make_score(eer_base, auc_base, acc_base)
+    score_bio = make_score(eer_bio, auc_bio, acc_bio)
+
+    if score_base is None or score_bio is None:
+        # no comparable metrics available -> fallback to tie
+        print('Result: tie between baseline and bio models (no comparable metrics)')
     else:
-        if auc_base is not None and auc_bio is not None:
-            if auc_base > auc_bio:
-                winner = 'baseline'
-            elif auc_bio > auc_base:
-                winner = 'bio'
-            else:
-                winner = 'tie'
+        print(f"Combined score -> base: {score_base:.4f}, bio: {score_bio:.4f} (equal weight EER/AUC/Accuracy)")
+        # compare with a small tolerance
+        if abs(score_base - score_bio) < 1e-6:
+            print('Result: tie between baseline and bio models')
+        elif score_base > score_bio:
+            print('Winner: baseline model')
         else:
-            winner = 'tie'
-
-    if winner == 'tie':
-        print('Result: tie between baseline and bio models')
-    else:
-        print(f"Winner: {winner} model")
+            print('Winner: bio model')
 
     # Overwrite existing files if present
     # Ensure .ckpt extension for both output paths and overwrite if present

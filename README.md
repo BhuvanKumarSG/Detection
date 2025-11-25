@@ -55,6 +55,10 @@ python -m venv .venv
 # 5) Quick evaluation on a small ASVspoof subset (balanced sampling from protocol)
 .venv\Scripts\python.exe scripts\predict_external.py "D:\Danush\detection\archive (1)\LA\LA\ASVspoof2019_LA_dev\flac" 20 base_model.ckpt bio_model.ckpt "D:\Danush\detection\archive (1)\LA\LA\ASVspoof2019_LA_cm_protocols\ASVspoof2019.LA.cm.dev.trl.txt" --balanced
 
+# 5b) Compare two saved models on the ASVspoof dev set (balanced, 200 samples)
+# This runs both models, prints per-file confidences and predictions, reports Accuracy/AUC/EER, and declares the winner.
+.venv\Scripts\python.exe scripts\predict_external.py "D:\Danush\detection\archive (1)\LA\LA\ASVspoof2019_LA_dev\flac" 200 base_model_full.ckpt bio_model_full.ckpt "D:\Danush\detection\archive (1)\LA\LA\ASVspoof2019_LA_cm_protocols\ASVspoof2019.LA.cm.dev.trl.txt" --balanced
+
 # 6) Created and trained on a 100/100 ASVspoof training subset (100 real + 100 fake)
 .venv\Scripts\python.exe scripts\make_asvspoof_sample.py "D:\Danush\detection\archive (1)\LA\LA\ASVspoof2019_LA_train\flac" "D:\Danush\detection\archive (1)\LA\LA\ASVspoof2019_LA_cm_protocols\ASVspoof2019.LA.cm.train.trn.txt" dataset\asvspoof_100_100 --n-per-class 100 --seed 123
 .venv\Scripts\python.exe -m detection.cli train-compare --dataset dataset\asvspoof_100_100 --out-base base_model_100.ckpt --out-bio bio_model_100.ckpt
@@ -63,12 +67,11 @@ python -m venv .venv
 .venv\Scripts\python.exe scripts\make_asvspoof_sample.py "D:\Danush\detection\archive (1)\LA\LA\ASVspoof2019_LA_train\flac" "D:\Danush\detection\archive (1)\LA\LA\ASVspoof2019_LA_cm_protocols\ASVspoof2019.LA.cm.train.trn.txt" dataset\asvspoof_500_500 --n-per-class 500 --seed 123
 .venv\Scripts\python.exe -m detection.cli train-compare --dataset dataset\asvspoof_500_500 --out-base base_model_500.ckpt --out-bio bio_model_500.ckpt
 
-Notes on git
----------
-I will create a separate branch for this README change and commit it there so the previous code on `main` remains unchanged. If you don't have push access to the remote repository, push will fail with permission denied (HTTP 403). In that case you can either:
-- Add the account you're using as a collaborator on the remote repository, or
-- Push to your fork and open a PR against the original repository.
+# 8) Create and train on the full ASVspoof training set (created during this session)
+.venv\Scripts\python.exe scripts\make_asvspoof_sample.py "D:\Danush\detection\archive (1)\LA\LA\ASVspoof2019_LA_train\flac" "D:\Danush\detection\archive (1)\LA\LA\ASVspoof2019_LA_cm_protocols\ASVspoof2019.LA.cm.train.trn.txt" dataset\asvspoof_full --n-per-class 999999 --seed 123
+.venv\Scripts\python.exe -m detection.cli train-compare --dataset dataset\asvspoof_full --out-base base_model_full.ckpt --out-bio bio_model_full.ckpt
 
+-----------------------------------------------------------------------------------
 
 4. Predict a file:
 
@@ -138,3 +141,48 @@ PY
 ```
 
 However, the code now adapts `n_fft` automatically and this global suppression is not necessary in most cases.
+
+Downloading ASVspoof & creating the full dataset (`dataset/asvspoof_full`)
+---------------------------------------------------------------
+This project does not include the ASVspoof audio (large, redistributed under ASVspoof terms). To reproduce the experiments and create `dataset/asvspoof_full` locally, follow these steps:
+
+1. Obtain the ASVspoof2019 LA archive
+   - Register and download the ASVspoof2019 LA dataset from the official ASVspoof website or your institutional mirror. You need at least:
+     - `ASVspoof2019_LA_train/flac` (training audio files)
+     - `ASVspoof2019_LA_dev/flac` (development audio files)
+     - `ASVspoof2019_LA_cm_protocols/` (protocol text files, e.g. `ASVspoof2019.LA.cm.train.trn.txt` and `ASVspoof2019.LA.cm.dev.trl.txt`)
+   - Place or extract the downloaded archive somewhere accessible on your machine (we used `D:\Danush\detection\archive (1)` in examples).
+
+2. Create `dataset/asvspoof_full` using the provided script
+   - From the project root (PowerShell), run the `make_asvspoof_sample.py` helper to copy all protocol-matched files into `dataset/asvspoof_full`:
+
+```powershell
+$ASV_ROOT = "D:\Danush\detection\archive (1)\LA\LA\ASVspoof2019_LA_train"
+.venv\Scripts\python.exe scripts\make_asvspoof_sample.py "$ASV_ROOT\flac" "$ASV_ROOT\..\ASVspoof2019_LA_cm_protocols\ASVspoof2019.LA.cm.train.trn.txt" dataset\asvspoof_full --n-per-class 999999 --seed 123
+```
+
+Notes:
+ - The script will copy the available protocol-matched files per class (it will not exceed what's available in the archive). If you want a balanced N-per-class sample, set `--n-per-class` to the number you need.
+ - Replace `$ASV_ROOT` with the path where you extracted the ASVspoof data.
+
+3. Train the models on the full dataset
+   - After `dataset/asvspoof_full` is created, train both models and save the checkpoints:
+
+```powershell
+.venv\Scripts\python.exe -m detection.cli train-compare --dataset dataset\asvspoof_full --out-base base_model_full.ckpt --out-bio bio_model_full.ckpt
+```
+
+4. Storage & sharing recommendations
+   - Do NOT add large audio folders to the Git repository directly. Instead consider one of the following:
+     - Use Git LFS to track audio files (`git lfs track "*.flac"`) and push the data via LFS (check your remote's LFS quota first).
+     - Upload a compressed archive (zip/tar) to cloud storage (S3, Google Drive, institutional server) and add a small download manifest to this repo.
+     - Keep the dataset outside the repo and document the local archive path in your environment or CI scripts.
+
+5. Quick verification
+   - Example dev evaluation (balanced sampling) comparing the two saved models and declaring a winner:
+
+```powershell
+.venv\Scripts\python.exe scripts\predict_external.py "D:\Danush\detection\archive (1)\LA\LA\ASVspoof2019_LA_dev\flac" 200 base_model_full.ckpt bio_model_full.ckpt "D:\Danush\detection\archive (1)\LA\LA\ASVspoof2019_LA_cm_protocols\ASVspoof2019.LA.cm.dev.trl.txt" --balanced
+```
+
+If you want, I can add a small helper script to download/upload archives to a release or cloud provider — tell me which hosting you prefer and I can prepare it.
